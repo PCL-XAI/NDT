@@ -4,7 +4,7 @@ import sklearn_json as skljson
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from sklearn import tree
-from cstree import CSTreeClassifier
+from rtree import RTreeClassifier
 from tool import preorder_dfs,to_skl_tree
 
 
@@ -130,9 +130,9 @@ def flow(from_x, to_x, from_y, to_y, from_label=None, to_label=None, from_center
     plt.show()
     plt.close()
 
-def cstree_visual(cs_tree, artists, max_alpha=1.0, min_alpha=0.0):
+def tree_visual(tree, artists, max_alpha=1.0, min_alpha=0.0):
     preorder_nodes = []
-    preorder_dfs(cs_tree.root, preorder_nodes)
+    preorder_dfs(tree.root, preorder_nodes)
     assert len(preorder_nodes)==len(artists)
     assert max_alpha >= 0.0 and max_alpha <= 1.0
     assert min_alpha >= 0.0 and min_alpha <= 1.0
@@ -143,7 +143,7 @@ def cstree_visual(cs_tree, artists, max_alpha=1.0, min_alpha=0.0):
         box = artists[i].get_bbox_patch()
         #box.set_boxstyle('round', rounding_size=1.0)
         if node.content['feature'] >= 0:
-            feature_name = cs_tree.feature_name[node.content['feature']]
+            feature_name = tree.feature_name[node.content['feature']]
             if len(feature_name) > 10:
                 feature_name = feature_name[:9] + '...'
             text += feature_name + '<=' + str(np.round(node.content['threshold'], 3)) + '\n' 
@@ -151,12 +151,12 @@ def cstree_visual(cs_tree, artists, max_alpha=1.0, min_alpha=0.0):
             index_ = node.content['value'].index(np.max(node.content['value']))
             #text += 'gain = ' + str(np.round(node.content['impurity'],4)) + '\n'
             text += 'value = ' + str(list(np.array(node.content['value'], dtype=np.int))) + '\n' 
-            text += 'class = ' + str(cs_tree.class_name[index_])
+            text += 'class = ' + str(tree.class_name[index_])
             box.set_linestyle('dashed')
-            if type(cs_tree)==CSTreeClassifier:
+            if type(tree)==RTreeClassifier:
                 box.set_facecolor('white')
         else:
-            if type(cs_tree) != CSTreeClassifier:
+            if type(tree) != RTreeClassifier:
                 text += 'value = ' + str(list(np.array(node.content['value'], dtype=np.int)))
             else:
                 if node.strategy is None:#非策略层
@@ -198,10 +198,10 @@ def color_gradient(c1, c2, mix=0):
     return mpl.colors.to_hex((1-mix)*c2 + mix*c1)
 
 # 打印树
-def print_tree(csdtc, feature_names, class_names, title=None, max_alpha=0.9, min_alpha=0.5, figsize=(16,16), dpi=300):
-    csdtc_ = skljson.from_dict(to_skl_tree(csdtc))
+def print_tree(tree, feature_names, class_names, title=None, max_alpha=0.9, min_alpha=0.5, figsize=(16,16), dpi=300):
+    tree_ = skljson.from_dict(to_skl_tree(tree))
     fig,ax = plt.subplots(ncols=1, figsize=figsize, dpi=dpi)
-    artists = tree.plot_tree(csdtc_, 
+    artists = tree.plot_tree(tree_, 
                        feature_names=feature_names,  
                        class_names=class_names,
                        filled=True,
@@ -211,7 +211,7 @@ def print_tree(csdtc, feature_names, class_names, title=None, max_alpha=0.9, min
                        fontsize=4,
                        ax=ax)
     ax.set_title(title, fontsize=20)
-    cstree_visual(csdtc, artists, max_alpha=max_alpha, min_alpha=min_alpha)
+    tree_visual(tree, artists, max_alpha=max_alpha, min_alpha=min_alpha)
     plt.tight_layout()
     plt.show()
 

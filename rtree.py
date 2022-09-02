@@ -756,7 +756,7 @@ class DecisionTreeClassifier(BaseEstimator):
             if node.left_child: q.put((node.left_child, depth+1))
             if node.right_child: q.put((node.right_child, depth+1))
                       
-class CSNode(Node):
+class RNode(Node):
     def __init__(self,
                  left_child=None,
                  right_child=None,
@@ -764,17 +764,17 @@ class CSNode(Node):
                  strategy_layer=-1, #策略所属于的层次 
                  content={}, #实际内容
                 ):
-        super(CSNode, self).__init__(left_child, right_child, content)
+        super(RNode, self).__init__(left_child, right_child, content)
         self.strategy = strategy
         self.strategy_layer = strategy_layer
         self.strategy_suspend = False #记录是否策略中断
         self.debug = {} #debug
 
-class CSTreeClassifier(DecisionTreeClassifier):
+class RTreeClassifier(DecisionTreeClassifier):
     def __init__(self,
                 criterion='id3', #only 'id3','c45','gini' are supported.
                 splitter='best', #only 'best','random'
-                build_method='cstree', #only 'cstree'
+                build_method='Rtree', #only 'Rtree'
                 max_features=None, #int, float or {“sqrt”, “log2”}, default=None work when splitter is 'random'
                 max_depth=-1, #允许的最大深度（全局）
                 min_impurity_decrease=0.0, #允许的最少熵减（用于建立树）【float或者其长度跟X一致数组】
@@ -794,7 +794,7 @@ class CSTreeClassifier(DecisionTreeClassifier):
                 class_name=None,
                 random_state=0,
                 logs=1):
-        super(CSTreeClassifier, self).__init__(criterion, splitter, build_method, max_features, min_impurity_decrease, 
+        super(RTreeClassifier, self).__init__(criterion, splitter, build_method, max_features, min_impurity_decrease, 
                                     max_depth, min_samples_split, feature_name, class_name, random_state, logs)
         assert type(min_impurity_decrease)==float or type(min_impurity_decrease)==list
         assert type(max_substree_depth)==int or type(max_substree_depth)==list
@@ -834,7 +834,7 @@ class CSTreeClassifier(DecisionTreeClassifier):
         current_group = groups[0] #获取当前数据聚类分布如簇1[1,3,4],簇2[2,5]
         # BFS建立树
         q = queue.Queue()
-        root = CSNode() #根节点（只有一个聚类）
+        root = RNode() #根节点（只有一个聚类）
         #三元组<node（仅分配了根节点聚类，输入不设置聚类）, 数据输入流下标, 当前所属策略层>
         q.put((root, np.arange(len(X[0]), dtype=np.int), 0)) 
         last_strategy_layer = 0
@@ -986,7 +986,7 @@ class CSTreeClassifier(DecisionTreeClassifier):
             reach_max_depth = True
         is_leave,res = self._split(X, Y, min_impurity_decrease, min_samples_split, rashomon, rashomon_splitter, x, y, is_leave=reach_max_depth) 
         if is_leave: #基尼系数为0或者所有特征收益相近，表示没有显著的区分特征或者已经完全划分
-            return CSNode(content=res)
+            return RNode(content=res)
         else:
             c,data1,data2 = res[0],res[1],res[2]
             left_child,right_child = None,None
@@ -996,7 +996,7 @@ class CSTreeClassifier(DecisionTreeClassifier):
             if data2 is not None:
                 right_child = self._build_dfs(data2[0], data2[1], min_impurity_decrease, min_samples_split, max_depth, \
                                                 rashomon, rashomon_splitter, data2[2], data2[3], current_depth+1)
-            return CSNode(left_child=left_child, right_child=right_child, content=c)
+            return RNode(left_child=left_child, right_child=right_child, content=c)
     
     # 为node以及其所有孩子节点都标记
     def set_strategy_info(self, node, strategy, strategy_layer):
