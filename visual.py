@@ -1,10 +1,12 @@
+import sys
+import sklearn
 import numpy as np
 import matplotlib as mpl
 import sklearn_json as skljson
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from sklearn import tree
 from rtree import RTreeClassifier
+from sklearn.tree import plot_tree
 from tool import preorder_dfs,to_skl_tree
 
 
@@ -20,6 +22,7 @@ def unique_label(labels, sort=False):
         label_set.sort(reverse=False)
     return label_set
 
+# to make the points become more far away from the group center
 def widen(group1, group2, k=2):
     center1,center2 = np.mean(group1, axis=0),np.mean(group2, axis=0)
     center = (center1+center2)/2
@@ -28,6 +31,7 @@ def widen(group1, group2, k=2):
     bias1,bias2 = vector1_- vector1,vector2_-vector2
     return bias1,bias2
 
+# denoise the noise points at rate'noise' of from data'data1' and to data'data2'
 def denoise(data1, data2, noise=0.01):
     noise_number = 0
     assert len(data1) == len(data2)
@@ -71,36 +75,103 @@ def arrow(x, y, dx, dy, color1, color2, size=0.5, alpha=1, gain=1e-2, min_gain=1
     #print(d)
     plt.scatter(x, y, c=c, marker='.', s=size, cmap='RdBu', alpha=alpha)
 
+# find the nearest point of x,y from all_x,all_y
+def nearest_point(x, y, all_x, all_y):
+    d = sys.float_info.max
+    min_x,min_y = None,None
+    for ax,ay in zip(all_x, all_y):
+        if ax is not None and ay is not None:
+            d_ = np.linalg.norm((x-ax, y-ay))
+            if d_ < d and d_ > 0:
+                d = np.linalg.norm((x-ax, y-ay))
+                min_x,min_y = ax,ay
+    return min_x,min_y
+
+def vector_expand(points, labels, centers, k=2.0):
+    points_ = []
+    for i in range(len(points)):
+        c_p = points[i] - centers[labels[i]]
+        points_.append(k*c_p + centers[labels[i]])
+    points_ = np.stack(points_)
+    return points_
+
 # draw flow
-def flow(from_x, to_x, from_y, to_y, from_label=None, to_label=None, from_center=None, to_center=None, strategy=None, margin_scale=1e-1, figsize=(12,12), draw_arrow=True, arrow_size=0.1):
+def flow(from_x, to_x, from_y, to_y, from_label=None, to_label=None, from_center=None, to_center=None, \
+         from_annotate=None, to_annotate=None, strategy=None, margin_scale=1e-1, figsize=(12,12), draw_arrow=True, arrow_size=0.1):
     assert len(from_x) == len(to_x)
     assert len(unique_label(from_label)) <= len(list(mcolors.TABLEAU_COLORS)) and len(unique_label(to_label)) <= len(list(mcolors.TABLEAU_COLORS))
     plt.figure(figsize=figsize)
     colors = ['deeppink', 'lightsalmon'] #input
     #arrow_colors = ['tab:orange', 'tab:green', 'tab:pink', 'tab:purple', 'tab:brown', 'tab:blue', 'tab:olive', 'tab:cyan']
     arrow_colors = list(mcolors.TABLEAU_COLORS)
-    plt.scatter(from_x, from_y, color=colors[0], alpha=0.2, s=100, edgecolors=colors[1])
+    plt.scatter(from_x, from_y, color=colors[0], alpha=0.2, s=120, edgecolors=colors[1])
     legend1,legend2 = [None] * len(unique_label(from_label)),[None] * len(unique_label(to_label))
     if from_label is not None: #来源的聚类
         for i in range(len(from_label)):
             plt.scatter(from_x[i], from_y[i], color=list(mcolors.TABLEAU_COLORS)[from_label[i]], alpha=0.4, s=15)
+        for i in range(len(from_label)):
+            if from_annotate is not None:
+                if from_annotate[i] is not None:
+                    plt.scatter(from_x[i], from_y[i], color=list(mcolors.TABLEAU_COLORS)[from_label[i]], marker='^', s=50, edgecolors='w')
     else:
         plt.scatter(from_x, from_y, color=colors[0], alpha=0.33, s=15)
     if from_center is not None: #来源的聚类中心
         assert len(from_center) <= len(mcolors.TABLEAU_COLORS) 
         for i in range(len(from_center)):
-            legend1[i] = plt.scatter(from_center[i,0], from_center[i,1], color=list(mcolors.TABLEAU_COLORS)[i], s=100, marker='P', edgecolors='w')
+            legend1[i] = plt.scatter(from_center[i,0], from_center[i,1], color=list(mcolors.TABLEAU_COLORS)[i], s=200, marker='P', edgecolors='w')
+    if from_annotate is not None: #来源的文本
+        annotate_coordinate_x,annotate_coordinate_y = [],[]
+        for i in range(len(from_annotate)):
+            if from_annotate[i] != None: #计算脱离中心向量
+                cx,cy = from_center[from_label[i]][0],from_center[from_label[i]][1]
+                ac_ = np.linalg.norm((from_x[i]-cx, from_y[i]-cy))
+                ax,ay = from_x[i] + 2.5*(from_x[i]-cx)/ac_, from_y[i] + 2.5*(from_y[i]-cy)/ac_
+                annotate_coordinate_x.append(ax)
+                annotate_coordinate_y.append(ay)
+            else:
+                annotate_coordinate_x.append(None)
+                annotate_coordinate_y.append(None)
+        for i in range(len(from_annotate)):
+            if from_annotate[i] != None: #计算脱离最近邻向量
+                ax,ay = annotate_coordinate_x[i],annotate_coordinate_y[i]
+                nx,ny = nearest_point(ax,ay, annotate_coordinate_x, annotate_coordinate_y)
+                na_ = np.linalg.norm((ax-nx, ay-ny))
+                px,py = ax + max(1.0/na_, 2.5)*(ax-nx)/na_, ay + max(1.0/na_, 2.5)*(ay-ny)/na_
+                plt.annotate(from_annotate[i], xy=(px-5,py), color='black', fontsize=20)
     colors = ['dodgerblue', 'deepskyblue'] #output
-    plt.scatter(to_x, to_y, color=colors[1], alpha=0.2, s=100, edgecolors=colors[1])
+    plt.scatter(to_x, to_y, color=colors[1], alpha=0.2, s=120, edgecolors=colors[1])
     if to_label is not None: #终点的聚类
         for i in range(len(to_label)):
             plt.scatter(to_x[i], to_y[i], color=list(mcolors.TABLEAU_COLORS)[to_label[i]], alpha=0.4, s=15)
+        for i in range(len(to_label)):
+            if to_annotate is not None:
+                if to_annotate[i] is not None:
+                    plt.scatter(to_x[i], to_y[i], color=list(mcolors.TABLEAU_COLORS)[to_label[i]], marker='^', s=50, edgecolors='w')
     else:
         plt.scatter(to_x, to_y, color=colors[0], alpha=0.33, s=15)
     if to_center is not None:#终点的聚类中心
         assert len(to_center) <= len(mcolors.TABLEAU_COLORS) 
         for i in range(len(to_center)):
-            legend2[i] = plt.scatter(to_center[i,0], to_center[i,1], color=list(mcolors.TABLEAU_COLORS)[i], s=100, marker='X', edgecolors='w')
+            legend2[i] = plt.scatter(to_center[i,0], to_center[i,1], color=list(mcolors.TABLEAU_COLORS)[i], s=200, marker='X', edgecolors='w')
+    if to_annotate is not None: #去向的文本
+        annotate_coordinate_x,annotate_coordinate_y = [],[]
+        for i in range(len(to_annotate)):
+            if to_annotate[i] != None: #计算脱离中心向量
+                cx,cy = to_center[to_label[i]][0],to_center[to_label[i]][1]
+                ac_ = np.linalg.norm((to_x[i]-cx, to_y[i]-cy))
+                ax,ay = to_x[i] + 2.5*(to_x[i]-cx)/ac_, to_y[i] + 2.5*(to_y[i]-cy)/ac_
+                annotate_coordinate_x.append(ax)
+                annotate_coordinate_y.append(ay)
+            else:
+                annotate_coordinate_x.append(None)
+                annotate_coordinate_y.append(None)
+        for i in range(len(to_annotate)):
+            if to_annotate[i] != None: #计算脱离最近邻向量
+                ax,ay = annotate_coordinate_x[i],annotate_coordinate_y[i]
+                nx,ny = nearest_point(ax,ay, annotate_coordinate_x, annotate_coordinate_y)
+                na_ = np.linalg.norm((ax-nx, ay-ny))
+                px,py = ax + max(1.0/na_, 2.5)*(ax-nx)/na_, ay + max(1.0/na_, 2.5)*(ay-ny)/na_
+                plt.annotate(to_annotate[i], xy=(px-5,py), color='black', fontsize=20)
     strong = {} #{'2-3':0.34,'3-5':0.12}，记录root->child以及分裂分数
     if strategy: #描绘箭头
         for i in range(len(strategy)):
@@ -124,13 +195,16 @@ def flow(from_x, to_x, from_y, to_y, from_label=None, to_label=None, from_center
     unique_,unique = list(unique_label(from_label)),list(unique_label(to_label))
     if to_label is not None: #画图例
         if from_label is not None:
-            plt.legend(legend1 + legend2, ['from_'+str(unique_[i]) for i in range(len(unique_))] + ['to_'+str(unique[i]) for i in range(len(unique))], ncol=2)
+            plt.legend(legend1 + legend2, ['from_'+str(unique_[i]) for i in range(len(unique_))] + \
+                       ['to_'+str(unique[i]) for i in range(len(unique))], ncol=2, prop={'size': 15})
         else:
-            plt.legend(legend2, list(unique_label(to_label)))
+            plt.legend(legend2, list(unique_label(to_label)), prop={'size': 15})
+    plt.xticks([])
+    plt.yticks([])
     plt.show()
     plt.close()
 
-def tree_visual(tree, artists, max_alpha=1.0, min_alpha=0.0):
+def tree_classifier_visual(tree, artists, max_alpha=1.0, min_alpha=0.0):
     preorder_nodes = []
     preorder_dfs(tree.root, preorder_nodes)
     assert len(preorder_nodes)==len(artists)
@@ -153,7 +227,7 @@ def tree_visual(tree, artists, max_alpha=1.0, min_alpha=0.0):
             text += 'value = ' + str(list(np.array(node.content['value'], dtype=np.int))) + '\n' 
             text += 'class = ' + str(tree.class_name[index_])
             box.set_linestyle('dashed')
-            if type(tree)==RTreeClassifier:
+            if type(tree) == RTreeClassifier:
                 box.set_facecolor('white')
         else:
             if type(tree) != RTreeClassifier:
@@ -198,20 +272,20 @@ def color_gradient(c1, c2, mix=0):
     return mpl.colors.to_hex((1-mix)*c2 + mix*c1)
 
 # 打印树
-def print_tree(tree, feature_names, class_names, title=None, max_alpha=0.9, min_alpha=0.5, figsize=(16,16), dpi=300):
+def print_tree(tree, feature_names, class_names, title=None, max_alpha=0.9, min_alpha=0.5, fontsize=16, figsize=(16,16), dpi=300):
     tree_ = skljson.from_dict(to_skl_tree(tree))
     fig,ax = plt.subplots(ncols=1, figsize=figsize, dpi=dpi)
-    artists = tree.plot_tree(tree_, 
+    artists = sklearn.tree.plot_tree(tree_, 
                        feature_names=feature_names,  
                        class_names=class_names,
                        filled=True,
                        node_ids=True,
                        impurity=True,
                        rounded=True,
-                       fontsize=4,
+                       fontsize=fontsize,
                        ax=ax)
     ax.set_title(title, fontsize=20)
-    tree_visual(tree, artists, max_alpha=max_alpha, min_alpha=min_alpha)
+    tree_classifier_visual(tree, artists, max_alpha=max_alpha, min_alpha=min_alpha)
     plt.tight_layout()
     plt.show()
 
