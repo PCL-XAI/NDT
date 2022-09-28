@@ -11,7 +11,7 @@ Surrogate models are commonly adopted in explainable artificial intelligence (XA
 <img src="./introduction.png" width=80%>
 </p>
 <p align="center" style="color:grey;font-size:90%">
-Both decision trees are extracted from the multilayer perceptron (MLP). However, the decision-maker is
+Both decision trees are extracted from the multi-layer perceptron (MLP). However, the decision-maker is
 confused when confronted with two tree explanations that
 are approximately equally accurate.
 </p>
